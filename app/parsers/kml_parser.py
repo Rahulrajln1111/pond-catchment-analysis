@@ -158,43 +158,42 @@ def parse_kml(file_bytes:bytes,filename:str)->ParsedKML:
     root = etree.fromstring(kml_bytes)
     all_contours = extract_contours(root)
     
-    river_contours = [c for c in all_contours if  c.is_river]
-    terrain_contours = [c for c in all_contours if not c.is_river]
+    #river_contours = [c for c in all_contours if  c.is_river]
+    #terrain_contours = [c for c in all_contours if not c.is_river]
     
     # Color based river detection to mitigate false positive
     
-    still_terrain=[]
+    # still_terrain=[]
     
-    for c in terrain_contours:
-        is_blue_river = False
-        placemarks = root.findall(f".//{{{KML_NS}}}Placemark")
-        for pm in placemarks:
-            name_elem = pm.find(f"{{{KML_NS}}}name")
-            name_text = name_elem.text
+    # for c in terrain_contours:
+    #     is_blue_river = False
+    #     placemarks = root.findall(f".//{{{KML_NS}}}Placemark")
+    #     for pm in placemarks:
+    #         name_elem = pm.find(f"{{{KML_NS}}}name")
+    #         name_text = name_elem.text
             
-            if name_text.strip() != c.placemark_id:
-                continue
-            ls = pm.find(f".//{{{KML_NS}}}LineString")
-            if ls is None:
-                continue
-            if has_blue_style(pm):
-                is_blue_river = True
-                break
+    #         if name_text.strip() != c.placemark_id:
+    #             continue
+    #         ls = pm.find(f".//{{{KML_NS}}}LineString")
+    #         if ls is None:
+    #             continue
+    #         if has_blue_style(pm):
+    #             is_blue_river = True
+    #             break
             
-        if is_blue_river:
-            c.is_river = True
-            river_contours.append(c)
-        else:
-            still_terrain.append(c)
+    #     if is_blue_river:
+    #         c.is_river = True
+    #         river_contours.append(c)
+    #     else:
+    #         still_terrain.append(c)
         
-    terrain_contours = still_terrain
+    # terrain_contours = still_terrain
         
-    logger.info(f"Final : {len(terrain_contours)} terrain, {len(river_contours)} rivers")
+    # logger.info(f"Final : {len(terrain_contours)} terrain, {len(river_contours)} rivers")
         
     boundary = extract_boundary(root)
     
     return ParsedKML(
-        contours=terrain_contours,
+        contours=all_contours,
         boundary_coords=boundary,
-        river_contours=river_contours,
     )
