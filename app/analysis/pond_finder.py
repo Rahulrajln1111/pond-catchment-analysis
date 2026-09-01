@@ -2,6 +2,7 @@ import logging
 import numpy as np
  
 from app.config import settings
+from app.models import Coordinate
 from app.parsers.kml_parser import ContourLine
 from app.analysis.catchment import (
     build_reverse_flow,
@@ -121,27 +122,39 @@ def simulate_pond(
     # Area
     area_sqm = float(pond_cells * cell_area)
 
-    # Extract boundary (edge cells of pond_mask)
-    padded = np.pad(pond_mask, 1, mode='constant', constant_values=False)
-    boundary_mask = np.zeros_like(pond_mask, dtype=bool)
-    for dr in range(-1, 2):
-        for dc in range(-1, 2):
-            if dr == 0 and dc == 0:
-                continue
-            shifted = padded[1+dr:1+dr+rows, 1+dc:1+dc+cols]
-            boundary_mask |= (pond_mask & ~shifted)
+    # Trace boundary using marching squares + simplify
+    from skimage import measure
+    from shapely.geometry import Polygon
 
-    bnd_rows, bnd_cols = np.where(boundary_mask)
-    boundary = []
-    for r, c in zip(bnd_rows, bnd_cols):
+    contours = measure.find_contours(pond_mask.astype(float), 0.5)
+
+    if not contours:
+        return {"pond_boundary": [], "pond_area_sqm": 0, "pond_volume_m3": 0, "water_surface_elevation_m": water_surface}
+
+    contour = sorted(contours, key=lambda c: len(c), reverse=True)[0]
+
+    raw_coords = []
+    for r, c in contour:
         lon = x_min + c * resolution
         lat = y_min + r * resolution
-        boundary.append((lon, lat))
+        raw_coords.append((lon, lat))
 
-    # Simplify boundary if too many points
-    if len(boundary) > 100:
-        step = len(boundary) // 100
-        boundary = boundary[::step]
+    if raw_coords[0] != raw_coords[-1]:
+        raw_coords.append(raw_coords[0])
+
+    try:
+        poly = Polygon(raw_coords)
+        if not poly.is_valid:
+            poly = poly.buffer(0)
+        poly = poly.simplify(resolution * 2, preserve_topology=True)
+        coords = list(poly.exterior.coords)
+    except Exception:
+        coords = raw_coords
+
+    pond_boundary = [
+        Coordinate(latitude=round(lat, 6), longitude=round(lon, 6))
+        for lon, lat in coords
+    ]
 
     logger.info(
         f"Pond: {pond_cells} cells, {area_sqm:.0f} sqm, "
@@ -149,7 +162,7 @@ def simulate_pond(
     )
 
     return {
-        "pond_boundary": boundary,
+        "pond_boundary": pond_boundary,
         "pond_area_sqm": area_sqm,
         "pond_volume_m3": volume_m3,
         "water_surface_elevation_m": water_surface,
@@ -268,8 +281,10 @@ def find_candidate_sites(
         # Check if catchment overlaps river significantly
         river_in_catchment = np.sum(catchment & river_mask)
         catchment_total = np.sum(catchment)
-        river_fraction = river_in_catchment / catchment_total if catchment_total > 0 else 0        # Get boundary
-        boundary = catchment_boundary(catchment, transform)
+        river_fraction = river_in_catchment / catchment_total if catchment_total > 0 else 0
+
+        # Get boundary (returns list of {"latitude": ..., "longitude": ...})
+        catchment_bdy = catchment_boundary(catchment, transform)
 
         # Simulate pond
         pond = simulate_pond(
@@ -281,17 +296,14 @@ def find_candidate_sites(
             "elevation_m": site["elevation"],
             "catchment_area_sqm": area,
             "catchment_area_hectares": area / 10000,
-            "catchment_boundary": [
-                {"latitude": lat, "longitude": lon}
-                for lon, lat in boundary
-            ],
+            "catchment_boundary": catchment_bdy,
             "river_excluded": river_fraction > 0.1,
             "river_fraction": river_fraction,
             "accumulation": site["accumulation"],
             # Pond fields
             "pond_boundary": [
-                {"latitude": lat, "longitude": lon}
-                for lon, lat in pond["pond_boundary"]
+                {"latitude": p.latitude, "longitude": p.longitude}
+                for p in pond["pond_boundary"]
             ],
             "pond_area_sqm": pond["pond_area_sqm"],
             "pond_volume_m3": pond["pond_volume_m3"],

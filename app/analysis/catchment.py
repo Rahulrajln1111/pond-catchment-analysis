@@ -81,56 +81,71 @@ def catchment_area_sqm(
     cell_count = np.sum(catchment)
     area = cell_count * cell_size_m * cell_size_m
     return area
- 
- 
+
+
 def catchment_boundary(
     catchment: np.ndarray,
     transform: dict,
-) -> list[tuple[float, float]]:
+) -> list[dict]:
     """
-    Extract the boundary polygon of a catchment area.
- 
-    Uses a simple edge-detection approach: a cell is on the boundary
-    if it's inside the catchment AND has at least one neighbor outside.
- 
+    Extract ordered boundary polygon from catchment mask.
+
+    Uses boundary tracing + Douglas-Peucker simplification to produce
+    a clean, non-jagged polygon suitable for KML visualization.
+
     Args:
-        catchment: Boolean catchment array.
-        transform: DEM transform dict with geo-referencing info.
- 
+        catchment: 2D boolean array.
+        transform: DEM transform dict.
+
     Returns:
-        List of (longitude, latitude) tuples forming the boundary.
+        List of {latitude, longitude} dicts forming a closed polygon.
     """
+    from skimage import measure
+    from shapely.geometry import Polygon
+
     rows, cols = catchment.shape
+    resolution = transform["resolution"]
+    x_min = transform["x_min"]
+    y_min = transform["y_min"]
+
+    # Trace boundary using marching squares
+    contours = measure.find_contours(catchment.astype(float), 0.5)
+
+    if not contours:
+        return []
+
+    # Pick the largest contour
+    contour = sorted(contours, key=lambda c: len(c), reverse=True)[0]
+
+    # Convert grid (row, col) to (lon, lat)
+    raw_coords = []
+    for r, c in contour:
+        lon = x_min + c * resolution
+        lat = y_min + r * resolution
+        raw_coords.append((lon, lat))
+
+    # Close if needed
+    if raw_coords[0] != raw_coords[-1]:
+        raw_coords.append(raw_coords[0])
+
+    # Build shapely polygon, fix self-intersections, simplify jagged edges
+    try:
+        poly = Polygon(raw_coords)
+        if not poly.is_valid:
+            poly = poly.buffer(0)
+        # Douglas-Peucker simplification: remove zigzag vertices
+        poly = poly.simplify(resolution * 2, preserve_topology=True)
+        coords = list(poly.exterior.coords)
+    except Exception:
+        coords = raw_coords
+
+    boundary = [
+        {"latitude": round(lat, 6), "longitude": round(lon, 6)}
+        for lon, lat in coords
+    ]
+
+    return boundary
  
-    # Pad with False to handle edge cells
-    padded = np.pad(catchment, 1, mode='constant', constant_values=False)
- 
-    # A cell is on the boundary if it's True and has any False neighbor
-    boundary_mask = np.zeros_like(catchment, dtype=bool)
-    for dr in range(-1, 2):
-        for dc in range(-1, 2):
-            if dr == 0 and dc == 0:
-                continue
-            # Shift the padded array and compare
-            shifted = padded[1+dr:1+dr+rows, 1+dc:1+dc+cols]
-            boundary_mask |= (catchment & ~shifted)
- 
-    # Convert boundary cells to coordinates
-    boundary_rows, boundary_cols = np.where(boundary_mask)
-    coords = []
-    for r, c in zip(boundary_rows, boundary_cols):
-        lon = transform["x_min"] + c * transform["resolution"]
-        lat = transform["y_min"] + r * transform["resolution"]
-        coords.append((lon, lat))
- 
-    # Simplify: keep only every Nth point to reduce polygon size
-    # (optional, for cleaner output)
-    if len(coords) > 200:
-        step = len(coords) // 200
-        coords = coords[::step]
- 
-    logger.info(f"Boundary extracted: {len(coords)} vertices")
-    return coords
  
  
 def _cell_area_sqm(fdir: np.ndarray) -> float:
