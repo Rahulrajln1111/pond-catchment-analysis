@@ -30,6 +30,26 @@ class PondSite(BaseModel):
         default=False,
         description="True if river areas were excluded from catchment calculation"
     )
+    pond_boundary: list[Coordinate] = Field(
+        default_factory=list,
+        description="Polygon boundary of the water surface when filled"
+    )
+    pond_area_sqm: float = Field(
+        default=0.0,
+        description="Water surface area of the pond (sq meters)"
+    )
+    pond_volume_m3: float = Field(
+        default=0.0,
+        description="Estimated water storage volume (cubic meters)"
+    )
+    pond_depth_m: float = Field(
+        default=0.0,
+        description="Designed depth of the pond (meters)"
+    )
+    water_surface_elevation_m: float = Field(
+        default=0.0,
+        description="Elevation of the water surface when full (meters)"
+    )
  
  
 class TerrainSummary(BaseModel):

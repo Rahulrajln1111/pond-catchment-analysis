@@ -64,6 +64,98 @@ def create_river_mask(
     return mask
  
  
+def simulate_pond(
+    dem: np.ndarray,
+    catchment: np.ndarray,
+    pour_row: int,
+    pour_col: int,
+    transform: dict,
+    depth_m: float | None = None,
+) -> dict:
+    """
+    Simulate filling a pond at the pour point.
+
+    Algorithm:
+    1. Water surface elevation = pour_point_elevation + depth
+    2. Find all cells within catchment where DEM < water surface
+    3. These cells form the pond (they would be submerged)
+    4. Calculate area and volume
+
+    Args:
+        dem: Pit-filled DEM array.
+        catchment: Boolean catchment array.
+        pour_row, pour_col: Grid indices of the pour point.
+        transform: DEM transform dict.
+        depth_m: Pond depth in meters.
+
+    Returns:
+        Dict with pond_boundary, area, volume.
+    """
+    if depth_m is None:
+        depth_m = settings.pond.pond_depth_m
+
+    rows, cols = dem.shape
+    resolution = transform["resolution"]
+    x_min = transform["x_min"]
+    y_min = transform["y_min"]
+    cell_area = transform["cell_size_m"] ** 2
+
+    pour_elev = dem[pour_row, pour_col]
+    if np.isnan(pour_elev):
+        return {"pond_boundary": [], "pond_area_sqm": 0, "pond_volume_m3": 0, "water_surface_elevation_m": 0}
+
+    water_surface = pour_elev + depth_m
+
+    # Find pond cells: inside catchment AND below water surface
+    pond_mask = catchment & (dem < water_surface) & (~np.isnan(dem))
+
+    pond_cells = np.sum(pond_mask)
+    if pond_cells == 0:
+        return {"pond_boundary": [], "pond_area_sqm": 0, "pond_volume_m3": 0, "water_surface_elevation_m": water_surface}
+
+    # Calculate volume: sum of (water_surface - dem) for each pond cell
+    water_depths = water_surface - dem
+    water_depths[~pond_mask] = 0
+    volume_m3 = float(np.sum(water_depths) * cell_area)
+
+    # Area
+    area_sqm = float(pond_cells * cell_area)
+
+    # Extract boundary (edge cells of pond_mask)
+    padded = np.pad(pond_mask, 1, mode='constant', constant_values=False)
+    boundary_mask = np.zeros_like(pond_mask, dtype=bool)
+    for dr in range(-1, 2):
+        for dc in range(-1, 2):
+            if dr == 0 and dc == 0:
+                continue
+            shifted = padded[1+dr:1+dr+rows, 1+dc:1+dc+cols]
+            boundary_mask |= (pond_mask & ~shifted)
+
+    bnd_rows, bnd_cols = np.where(boundary_mask)
+    boundary = []
+    for r, c in zip(bnd_rows, bnd_cols):
+        lon = x_min + c * resolution
+        lat = y_min + r * resolution
+        boundary.append((lon, lat))
+
+    # Simplify boundary if too many points
+    if len(boundary) > 100:
+        step = len(boundary) // 100
+        boundary = boundary[::step]
+
+    logger.info(
+        f"Pond: {pond_cells} cells, {area_sqm:.0f} sqm, "
+        f"{volume_m3:.0f} m3, depth={depth_m}m"
+    )
+
+    return {
+        "pond_boundary": boundary,
+        "pond_area_sqm": area_sqm,
+        "pond_volume_m3": volume_m3,
+        "water_surface_elevation_m": water_surface,
+    }
+
+
 def find_candidate_sites(
     dem: np.ndarray,
     fdir: np.ndarray,
@@ -176,11 +268,14 @@ def find_candidate_sites(
         # Check if catchment overlaps river significantly
         river_in_catchment = np.sum(catchment & river_mask)
         catchment_total = np.sum(catchment)
-        river_fraction = river_in_catchment / catchment_total if catchment_total > 0 else 0
- 
-        # Get boundary
+        river_fraction = river_in_catchment / catchment_total if catchment_total > 0 else 0        # Get boundary
         boundary = catchment_boundary(catchment, transform)
- 
+
+        # Simulate pond
+        pond = simulate_pond(
+            dem, catchment, site["row"], site["col"], transform
+        )
+
         results.append({
             "location": {"latitude": site["lat"], "longitude": site["lon"]},
             "elevation_m": site["elevation"],
@@ -193,6 +288,15 @@ def find_candidate_sites(
             "river_excluded": river_fraction > 0.1,
             "river_fraction": river_fraction,
             "accumulation": site["accumulation"],
+            # Pond fields
+            "pond_boundary": [
+                {"latitude": lat, "longitude": lon}
+                for lon, lat in pond["pond_boundary"]
+            ],
+            "pond_area_sqm": pond["pond_area_sqm"],
+            "pond_volume_m3": pond["pond_volume_m3"],
+            "pond_depth_m": settings.pond.pond_depth_m,
+            "water_surface_elevation_m": pond["water_surface_elevation_m"],
         })
  
     # Sort final results by catchment area (largest first)
