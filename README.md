@@ -3,8 +3,10 @@
 A backend API that accepts contour maps in KML/KMZ format, analyzes terrain,
 and returns catchment information required for pond planning.
 
-**GitHub Repo:** [Your repo link here]  
+**GitHub Repo:** https://github.com/Rahulrajln1111/pond-catchment-analysis  
 **API Endpoint:** `POST http://10.1.75.51:4289/analyzeContour`  
+
+![alt text](image.png)
 
 ---
 
@@ -31,7 +33,7 @@ contour map data. Given a KML/KMZ contour map, the system:
 1. Parses terrain elevation data from contour lines
 2. Builds a Digital Elevation Model (DEM) grid
 3. Simulates water flow across the terrain
-4. Identifies natural water汇聚点 (where water collects)
+4. Identifies natural water (where water collects)
 5. Estimates catchment areas (land that drains to each point)
 6. Simulates pond filling to calculate storage capacity
 7. Returns structured JSON with candidate pond sites
@@ -46,6 +48,8 @@ when verified against OpenStreetMap data.
 
 ```
 pond_catchment/
+├── test.py                   # KML visualization generator (calls API)
+├── contours_1m.kml           # Sample contour map input
 ├── requirements.txt          # Python dependencies
 ├── app/
 │   ├── __init__.py
@@ -87,20 +91,6 @@ pond_catchment/
 - Python 3.10+
 - pip
 
-### Installation
-
-```bash
-# Clone the repository
-git clone <your-repo-url>
-cd Assign-1-2/pond_catchment
-
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-```
 
 ### Dependencies
 
@@ -113,12 +103,73 @@ pip install -r requirements.txt
 | numpy | 2.2.6 | Numerical computations |
 | scipy | 1.15.3 | Interpolation, ndimage |
 | shapely | 2.1.2 | Geometric operations |
+| scikit-image | 0.22+ | Boundary tracing (marching squares) |
+| requests | 2.31+ | API calls (for test.py) |
 | pydantic | (via fastapi) | Data validation |
 
 
 Server starts at: `http://10.1.75.51:4289`
 
 ---
+
+## Generating KML Visualization (test.py)
+
+The `test.py` script calls the running API and generates a combined KML file
+that overlays pond analysis results on top of the original contour map.
+
+### Files Required
+
+Place these in the project root directory (`pond_catchment/`):
+- `test.py` — KML generation script
+- `contours_1m.kml` — Sample contour map input
+
+### Usage
+
+```bash
+# 2. Run test.py (in another terminal)
+cd pond_catchment
+source venv/bin/activate
+python3 test.py
+```
+
+### Output
+
+`test.py` generates `pond_analysis.kml` containing:
+
+| Layer | Color | Content |
+|-------|-------|---------|
+| Terrain contours | Brown lines | Original 1262 elevation contour lines |
+| River contours | Blue lines | 93 Shivnath River contour lines |
+| Pond sites | Red pins | 5 candidate pond locations |
+| Catchment areas | Orange polygons | Land draining to each pond |
+| Pond surfaces | Light blue polygons | Water surface when pond is filled |
+
+### Viewing Results
+
+Open `pond_analysis.kml` in:
+- **Google Earth Desktop** — Best experience, full 3D terrain
+- **Kml viewer Earth Web** — https://kmlviewer.nsspot.net/ → Import KML
+
+Each placemark includes a popup with elevation, catchment area,
+pond area, and volume information.
+
+### Alternative: Direct API Call
+
+```bash
+# Get  pond site coordinates
+curl -X POST http://localhost:8000/analyzeContour \
+  -F "file=@contours_1m.kml" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+for i, s in enumerate(data['candidate_sites']):
+    print(f'\nSite {i+1}:')
+    print(f'  Location: ({s[\"location\"][\"latitude\"]:.6f}, {s[\"location\"][\"longitude\"]:.6f})')
+    print(f'  Elevation: {s[\"elevation_m\"]:.1f}m')
+    print(f'  Catchment: {s[\"catchment_area_hectares\"]:.2f} ha')
+    print(f'  Pond area: {s[\"pond_area_sqm\"]:.0f} sqm')
+    print(f'  Volume: {s[\"pond_volume_m3\"]:.0f} m3')
+"
+```
 
 ## API Documentation
 
