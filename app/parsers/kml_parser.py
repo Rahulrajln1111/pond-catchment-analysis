@@ -158,38 +158,23 @@ def parse_kml(file_bytes:bytes,filename:str)->ParsedKML:
     root = etree.fromstring(kml_bytes)
     all_contours = extract_contours(root)
     
-    #river_contours = [c for c in all_contours if  c.is_river]
-    #terrain_contours = [c for c in all_contours if not c.is_river]
-    
-    # Color based river detection to mitigate false positive
-    
-    # still_terrain=[]
-    
-    # for c in terrain_contours:
-    #     is_blue_river = False
-    #     placemarks = root.findall(f".//{{{KML_NS}}}Placemark")
-    #     for pm in placemarks:
-    #         name_elem = pm.find(f"{{{KML_NS}}}name")
-    #         name_text = name_elem.text
-            
-    #         if name_text.strip() != c.placemark_id:
-    #             continue
-    #         ls = pm.find(f".//{{{KML_NS}}}LineString")
-    #         if ls is None:
-    #             continue
-    #         if has_blue_style(pm):
-    #             is_blue_river = True
-    #             break
-            
-    #     if is_blue_river:
-    #         c.is_river = True
-    #         river_contours.append(c)
-    #     else:
-    #         still_terrain.append(c)
-        
-    # terrain_contours = still_terrain
-        
-    # logger.info(f"Final : {len(terrain_contours)} terrain, {len(river_contours)} rivers")
+    # Color-based river detection — mark but don't separate
+    placemarks = root.findall(f".//{{{KML_NS}}}Placemark")
+    pm_by_name = {}
+    for pm in placemarks:
+        name_elem = pm.find(f"{{{KML_NS}}}name")
+        if name_elem is not None and name_elem.text:
+            pm_by_name[name_elem.text.strip()] = pm
+ 
+    river_count = 0
+    for c in all_contours:
+        pm = pm_by_name.get(c.placemark_id)
+        if pm is not None and has_blue_style(pm):
+            c.is_river = True
+            river_count += 1
+ 
+    logger.info(f"Marked {river_count} river contours (kept in main list)")
+
         
     boundary = extract_boundary(root)
     

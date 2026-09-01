@@ -61,6 +61,10 @@ class PondConfig:
  
     # Minimum local relief (meters) — ensures real depression, not flat plain.
     min_local_relief: float = 1.0
+
+    # Design depth of the pond (meters).
+    # Water fills up to (pour_point_elevation + pond_depth_m).
+    pond_depth_m: float = 2.0
  
  
 @dataclass(frozen=True)
