@@ -26,13 +26,15 @@ router = APIRouter()
  
  
 @router.post("/analyzeContour", response_model=AnalysisResponse)
-async def analyze_contour(file: UploadFile = File(...)):
+@router.post("/findCatchment", response_model=AnalysisResponse)
+async def analyze_contour(file: UploadFile = File(None), contour_map: UploadFile = File(None)):
 
     # --- Validate file ---
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="No filename provided")
+    upload = file or contour_map
+    if not upload or not upload.filename:
+        raise HTTPException(status_code=400, detail="No file uploaded. Send as 'file' or 'contour_map'.")
  
-    ext = file.filename.lower().rsplit(".", 1)[-1] if "." in file.filename else ""
+    ext = upload.filename.lower().rsplit(".", 1)[-1] if "." in upload.filename else ""
     if f".{ext}" not in settings.allowed_extensions:
         raise HTTPException(
             status_code=400,
@@ -40,7 +42,7 @@ async def analyze_contour(file: UploadFile = File(...)):
         )
  
     # Read file bytes
-    file_bytes = await file.read()
+    file_bytes = await upload.read()
     if len(file_bytes) > settings.max_upload_size_bytes:
         raise HTTPException(
             status_code=413,
@@ -49,8 +51,8 @@ async def analyze_contour(file: UploadFile = File(...)):
  
     try:
         
-        logger.info(f"Processing uploaded file: {file.filename}")
-        parsed = parse_kml(file_bytes, file.filename)
+        logger.info(f"Processing uploaded file: {upload.filename}")
+        parsed = parse_kml(file_bytes, upload.filename)
  
         if not parsed.contours:
             raise HTTPException(
