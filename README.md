@@ -7,9 +7,10 @@ flow accumulation → catchment delineation), and returns **suggested pond
 locations**, their **catchment areas**, and the **expected water volume** —
 all overlaid and visualized on the map.
 
-**Author:** Rahul Razz | **ID:** 12341690  
+**Author:** Rahul Razz | **Institute ID:** 12341690  
 **GitHub Repo:** https://github.com/Rahulrajln1111/pond-catchment-analysis  
-**Web App + API:** `http://<host>:4289/` (frontend served by FastAPI)
+**Web App + API:** `http://<host>:4289/` (frontend served by FastAPI)  
+**Live demo (campus network):** http://10.1.75.51:4290/
 
 ### What's new in Phase II
 
@@ -20,6 +21,7 @@ all overlaid and visualized on the map.
 | Interface | curl / Google Earth workflow | **Full React web app** with live map overlays |
 | Results on map | Export KML → open in Google Earth | **Ponds, catchments, volumes rendered on the map instantly** |
 | Custom sites | — | **Click anywhere** to analyze a specific pond point (25 ms) |
+| River exclusion | KML blue-line color analysis | **OSM waterways (Overpass API)** + DEM flow-accumulation fallback, pond-surface overlap check |
 | Speed (4.6 km² area) | ~40 s (Python loops) | **~0.5 s** (vectorized numpy, measured) |
 | Export | test.py script | One-click **KML download per site** |
 
@@ -611,6 +613,29 @@ All 5 candidate pond sites were verified to be outside the river channel:
 | Site 4 | 2,180m | ✅ Outside river |
 | Site 5 | 2,349m | ✅ Outside river |
 
+### Phase II: OSM River Exclusion for Drawn Areas
+
+Drawn areas have no KML river styling, so rivers are detected from
+OpenStreetMap instead (new in Phase II):
+
+1. **Primary — Overpass API:** all `waterway` features (river, stream,
+   canal, tidal_channel, riverbank) inside the selected bbox are fetched,
+   buffered by 40 m, and rasterized onto the DEM grid (8 s timeout,
+   3 mirror endpoints).
+2. **Fallback — DEM flow accumulation:** if Overpass is unreachable,
+   streams are thresholded from flow accumulation
+   (`acc >= max(200, 0.15 × max(acc))`) and dilated by 5 cells
+   (~50 m buffer).
+3. **Pond-surface check:** a candidate is rejected if its catchment
+   overlaps the river mask by >5% **or** if the pond *water surface*
+   overlaps it by >5% — necessary because a pond 75 m from a river
+   centerline can still spread into the river bed.
+
+On the Shivnath test area this reduced 5 sites (one of which spread
+into the river) to 3 sites with zero river overlap. The excluded river
+zone is also returned by the API (`river_mask_boundary`) and drawn on
+the map as a blue overlay.
+
 ---
 
 ## Demonstration
@@ -748,3 +773,19 @@ No code changes needed for new input files.
 **Data:** Sample contour map generated from NASA/USGS SRTM elevation data. River verification using OpenStreetMap data.
 
 ---
+
+
+
+## Demonstration Screenshots
+
+**Upload KML mode — selecting the contour file**
+
+![Upload KML mode](image-1.png)
+
+**Draw mode — polygon selected on the interactive map**
+
+![Polygon selection](image-3.png)
+
+**Analysis results on the interactive map**
+
+![Analysis results](image-2.png)
