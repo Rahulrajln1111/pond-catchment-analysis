@@ -38,6 +38,13 @@ class HydrologyConfig:
     # Higher = fewer streams detected. Lower = more streams.
     stream_threshold: int = 50
  
+    # --- River (major channel) detection for drawn-area analysis ---
+    # Major channels only: a cell is "river" if its accumulation exceeds
+    # BOTH an absolute floor and this fraction of the area's max accumulation.
+    # Prevents every small ditch from being treated as an exclusion river.
+    river_fraction_of_max: float = 0.15
+    river_min_accumulation: int = 200
+ 
     # Buffer width (in cells) around streams for exclusion zones.
     stream_buffer_cells: int = 5
  

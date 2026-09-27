@@ -7,6 +7,7 @@ from collections import OrderedDict
 import numpy as np
 from fastapi import APIRouter, File, UploadFile, HTTPException
 from fastapi.responses import Response
+from scipy.ndimage import binary_dilation
 
 from app.config import settings
 from app.models import (
@@ -24,6 +25,7 @@ from app.analysis.hydrology import (
     fill_sinks,
     compute_flow_direction,
     compute_flow_accumulation,
+    detect_streams,
 )
 from app.analysis.pond_finder import (
     create_river_mask,
@@ -163,13 +165,35 @@ def _run_pipeline(
     transform: dict,
     max_sites: int,
 ):
-    """Shared hydrology + pond finding. Returns (filled, fdir, acc, sites)."""
+    """Shared hydrology + pond finding. Returns (filled, fdir, acc, river_mask, streams, sites)."""
     filled = fill_sinks(dem)
     fdir = compute_flow_direction(filled)
     acc = compute_flow_accumulation(fdir, filled)
-    river_mask = np.zeros(dem.shape, dtype=bool)  # no river info for drawn areas
+
+    # River detection from terrain itself (drawn areas have no KML river lines):
+    # stream channels = cells with flow accumulation >= threshold, dilated by a
+    # buffer so ponds are never suggested on or immediately beside a river.
+    # "River" = MAJOR channel only: accumulation must exceed both an absolute
+    # floor and river_fraction_of_max × the area's max accumulation, so small
+    # ditches don't over-exclude (pour points always sit on drainage lines).
+    streams = detect_streams(fdir, acc)
+    river_threshold = max(
+        settings.hydrology.river_min_accumulation,
+        float(np.nanmax(acc)) * settings.hydrology.river_fraction_of_max,
+    )
+    rivers = acc >= river_threshold
+    buffer_cells = settings.hydrology.stream_buffer_cells
+    if rivers.any() and buffer_cells > 0:
+        river_mask = binary_dilation(rivers, iterations=buffer_cells)
+    else:
+        river_mask = rivers
+    logger.info(
+        f"River mask: threshold={river_threshold:.0f}, {int(rivers.sum())} river cells, "
+        f"{int(river_mask.sum())} cells after {buffer_cells}-cell buffer"
+    )
+
     sites = find_candidate_sites(filled, fdir, acc, transform, river_mask)
-    return filled, fdir, acc, river_mask, sites
+    return filled, fdir, acc, river_mask, rivers, sites
 
 
 def _sites_to_models(sites: list[dict]) -> list[PondSite]:
@@ -329,7 +353,7 @@ async def analyze_area(request: AreaAnalysisRequest):
     transform = dem_result["transform"]
 
     try:
-        filled, fdir, acc, river_mask, sites = _run_pipeline(dem, transform, request.max_sites)
+        filled, fdir, acc, river_mask, rivers, sites = _run_pipeline(dem, transform, request.max_sites)
     except HTTPException:
         raise
     except ValueError as e:
@@ -383,7 +407,7 @@ async def analyze_area(request: AreaAnalysisRequest):
         ),
         terrain=terrain,
         candidate_sites=_sites_to_models(sites),
-        rivers_detected=False,
+        rivers_detected=bool(rivers.any()),
         data_source="aws-terrain-tiles",
         analysis_time_ms=elapsed_ms,
         context_id=context_id,
