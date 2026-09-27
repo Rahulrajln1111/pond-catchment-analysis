@@ -32,6 +32,7 @@ export default function App() {
     setError(null)
     setCustomSite(null)
     setSelectedSite(null)
+    setDrawTool(null) // exit drawing mode once an area has been analyzed
     try {
       const resp = await fetch('/analyzeArea', {
         method: 'POST',
