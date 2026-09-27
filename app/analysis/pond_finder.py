@@ -339,6 +339,23 @@ def find_candidate_sites(
             dem, catchment, site["row"], site["col"], transform
         )
 
+        # The pond SURFACE must not overlap the river: a "pond" whose water
+        # spreads into the river channel is really a dam on the river.
+        # (Catchment overlap alone can be 0% because the catchment is
+        # upstream land while the pond floods downstream low ground.)
+        water_surface = pond["water_surface_elevation_m"]
+        pond_surface = catchment & np.isfinite(dem) & (dem < water_surface)
+        pond_cells = int(np.sum(pond_surface))
+        if pond_cells == 0:
+            continue
+        pond_river_fraction = float(np.sum(pond_surface & river_mask)) / pond_cells
+        if pond_river_fraction > settings.pond.max_pond_river_fraction:
+            logger.info(
+                f"  rejecting candidate ({site['lat']:.5f}, {site['lon']:.5f}): "
+                f"pond surface overlaps river ({pond_river_fraction:.0%})"
+            )
+            continue
+
         results.append({
             "location": {"latitude": site["lat"], "longitude": site["lon"]},
             "_lat": site["lat"],
@@ -347,8 +364,9 @@ def find_candidate_sites(
             "catchment_area_sqm": area,
             "catchment_area_hectares": area / 10000,
             "catchment_boundary": catchment_bdy,
-            "river_excluded": river_fraction > 0.1,
+            "river_excluded": river_fraction > 0.1 or pond_river_fraction > 0,
             "river_fraction": river_fraction,
+            "pond_river_fraction": pond_river_fraction,
             "accumulation": site["accumulation"],
             "pond_boundary": pond["pond_boundary"],
             "pond_boundary_rings": pond["pond_boundary_rings"],

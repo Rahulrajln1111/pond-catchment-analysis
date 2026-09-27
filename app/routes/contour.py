@@ -27,6 +27,7 @@ from app.analysis.hydrology import (
     compute_flow_accumulation,
     detect_streams,
 )
+from app.analysis.osm_rivers import river_mask_from_osm
 from app.analysis.pond_finder import (
     create_river_mask,
     find_candidate_sites,
@@ -164,32 +165,40 @@ def _run_pipeline(
     dem: np.ndarray,
     transform: dict,
     max_sites: int,
+    geom: dict | None = None,
 ):
-    """Shared hydrology + pond finding. Returns (filled, fdir, acc, river_mask, streams, sites)."""
+    """Shared hydrology + pond finding. Returns (filled, fdir, acc, river_mask, rivers, sites)."""
     filled = fill_sinks(dem)
     fdir = compute_flow_direction(filled)
     acc = compute_flow_accumulation(fdir, filled)
 
-    # River detection from terrain itself (drawn areas have no KML river lines):
-    # stream channels = cells with flow accumulation >= threshold, dilated by a
-    # buffer so ponds are never suggested on or immediately beside a river.
-    # "River" = MAJOR channel only: accumulation must exceed both an absolute
-    # floor and river_fraction_of_max × the area's max accumulation, so small
-    # ditches don't over-exclude (pour points always sit on drainage lines).
-    streams = detect_streams(fdir, acc)
-    river_threshold = max(
-        settings.hydrology.river_min_accumulation,
-        float(np.nanmax(acc)) * settings.hydrology.river_fraction_of_max,
-    )
-    rivers = acc >= river_threshold
-    buffer_cells = settings.hydrology.stream_buffer_cells
-    if rivers.any() and buffer_cells > 0:
-        river_mask = binary_dilation(rivers, iterations=buffer_cells)
-    else:
+    # River exclusion for drawn areas. Primary source: OpenStreetMap
+    # (surveyed river geometry via the free Overpass API — reliable where
+    # DEM thresholding fails, e.g. flat terrain). Fallback: flow-accumulation
+    # thresholding on the DEM itself when OSM is unreachable.
+    river_source = "none"
+    try:
+        river_mask, _ways = river_mask_from_osm(geom, transform, filled)
+        rivers = river_mask
+        river_source = "osm"
+    except Exception as e:  # noqa: BLE001 - OSM is best-effort
+        logger.warning(f"OSM river lookup failed ({e}); falling back to DEM detection")
+        streams = detect_streams(fdir, acc)
+        river_threshold = max(
+            settings.hydrology.river_min_accumulation,
+            float(np.nanmax(acc)) * settings.hydrology.river_fraction_of_max,
+        )
+        rivers = acc >= river_threshold
+        if rivers.any() and settings.hydrology.stream_buffer_cells > 0:
+            rivers = binary_dilation(
+                rivers, iterations=settings.hydrology.stream_buffer_cells
+            )
         river_mask = rivers
+        river_source = "dem-fallback"
+
     logger.info(
-        f"River mask: threshold={river_threshold:.0f}, {int(rivers.sum())} river cells, "
-        f"{int(river_mask.sum())} cells after {buffer_cells}-cell buffer"
+        f"River exclusion source={river_source}: {int(rivers.sum())} mask cells "
+        f"({100.0 * rivers.sum() / rivers.size:.2f}% of grid)"
     )
 
     sites = find_candidate_sites(filled, fdir, acc, transform, river_mask)
@@ -353,7 +362,9 @@ async def analyze_area(request: AreaAnalysisRequest):
     transform = dem_result["transform"]
 
     try:
-        filled, fdir, acc, river_mask, rivers, sites = _run_pipeline(dem, transform, request.max_sites)
+        filled, fdir, acc, river_mask, rivers, sites = _run_pipeline(
+            dem, transform, request.max_sites, geom=geom
+        )
     except HTTPException:
         raise
     except ValueError as e:

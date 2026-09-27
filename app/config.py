@@ -69,6 +69,11 @@ class PondConfig:
     # Minimum local relief (meters) — ensures real depression, not flat plain.
     min_local_relief: float = 1.0
 
+    # Max fraction of the pond WATER SURFACE allowed to overlap the river
+    # exclusion zone. Even a small overlap means the pond floods the river
+    # bed (i.e. it is a dam, not a pond), so default is strict.
+    max_pond_river_fraction: float = 0.05
+
     # Design depth of the pond (meters).
     # Water fills up to (pour_point_elevation + pond_depth_m).
     pond_depth_m: float = 2.0
