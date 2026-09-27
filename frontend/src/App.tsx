@@ -295,6 +295,7 @@ export default function App() {
             selectedSite={selectedSite}
             onSelectSite={setSelectedSite}
             onMapClick={pickPoint}
+            onToolDone={() => setDrawTool(null)}
           />
           {analysis && analysis.candidate_sites.length > 0 && (
             <div className="legend">

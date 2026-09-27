@@ -21,6 +21,7 @@ interface MapViewProps {
   selectedSite: number | null
   onSelectSite: (i: number | null) => void
   onMapClick?: (lat: number, lng: number) => void
+  onToolDone?: () => void
 }
 
 const SITE_COLORS = ['#f87171', '#34d399', '#c084fc', '#fbbf24', '#fb923c', '#4ade80', '#60a5fa']
@@ -71,6 +72,8 @@ export default function MapView(props: MapViewProps) {
   const onSelectSiteRef = useRef(onSelectSite)
   onSelectSiteRef.current = onSelectSite
   const drawToolRef = useRef<DrawTool>(null)
+  const onToolDoneRef = useRef(props.onToolDone)
+  onToolDoneRef.current = props.onToolDone
 
   // polygon drawing session state (refs; preview re-rendered via state)
   const polyVertsRef = useRef<L.LatLng[]>([])
@@ -146,6 +149,7 @@ export default function MapView(props: MapViewProps) {
     ring.push(ring[0])
     clearPreview()
     onSelectionRef.current({ type: 'Polygon', coordinates: [ring] })
+    onToolDoneRef.current?.() // one-shot: exit draw mode after finishing
   }
 
   function clearPreview() {
@@ -208,6 +212,7 @@ export default function MapView(props: MapViewProps) {
       previewLayerRef.current?.clearLayers()
       rectLayerRef.current = null
       onSelectionRef.current({ type: 'Polygon', coordinates: [ring] })
+      onToolDoneRef.current?.() // one-shot: exit draw mode after one rectangle
     }
   }, [drawTool])
 
