@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
+import './leaflet.css' // self-hosted Leaflet CSS (no CDN dependency)
 import type { AnalysisResponse, PondSite } from './types'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
