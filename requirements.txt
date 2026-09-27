@@ -1,8 +1,9 @@
-fastapi==0.115.12
-uvicorn[standard]==0.34.3
-python-multipart==0.0.20
-lxml==5.4.0
-numpy==2.2.6
-scipy==1.15.3
-shapely==2.1.2
-scikit-image>=0.22
+# Phase II light dependencies.
+# scikit-image, lxml and shapely were removed: contour parsing uses the
+# stdlib xml.etree, and polygon tracing/simplification use the built-in
+# app/analysis/polygons.py module (numpy only).
+fastapi==0.141.1
+uvicorn[standard]==0.54.0
+python-multipart==0.0.32
+numpy>=2.0
+scipy>=1.14

@@ -65,15 +65,33 @@ class PondConfig:
     # Design depth of the pond (meters).
     # Water fills up to (pour_point_elevation + pond_depth_m).
     pond_depth_m: float = 2.0
- 
- 
+
+
+@dataclass(frozen=True)
+class AnalysisConfig:
+    """Limits for interactive (drawn-area) analysis — stress & scaling."""
+
+    # Maximum area (sq km) accepted for a single drawn selection.
+    max_area_sqkm: float = 25.0
+
+    # Minimum area (sq km) — tiny selections produce meaningless hydrology.
+    min_area_sqkm: float = 0.0025  # 50m x 50m
+
+    # Cached terrain contexts kept in memory (LRU eviction when exceeded).
+    max_cached_contexts: int = 12
+
+    # Context cache TTL in seconds.
+    context_ttl_seconds: float = 3600.0
+
+
 @dataclass(frozen=True)
 class AppConfig:
     """Top-level application configuration."""
- 
+
     dem: DEMConfig = field(default_factory=DEMConfig)
     hydrology: HydrologyConfig = field(default_factory=HydrologyConfig)
     pond: PondConfig = field(default_factory=PondConfig)
+    analysis: AnalysisConfig = field(default_factory=AnalysisConfig)
  
     # Keywords that identify river/stream features in KML placemark names.
     # Used to exclude rivers from catchment calculation.
@@ -87,6 +105,9 @@ class AppConfig:
  
     # Maximum upload file size (10 MB)
     max_upload_size_bytes: int = 10 * 1024 * 1024
+
+    # Directory for caching downloaded terrain tiles
+    terrain_cache_dir: str = "/tmp/terrain_cache"
  
  
 # Singleton config — import this wherever you need config values.

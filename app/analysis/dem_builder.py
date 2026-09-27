@@ -61,6 +61,8 @@ def build_dem(parsed:ParsedKML)->dict:
         "rows":dem.shape[0],
         "cols":dem.shape[1],
         "cell_size_m":deg_to_meters(resolution),
+        # meshgrid rows ascend with y_grid: row 0 = southern edge
+        "row0": "south",
     }
     
     return {
