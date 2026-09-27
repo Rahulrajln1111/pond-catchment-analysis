@@ -92,8 +92,14 @@ export default function MapView(props: MapViewProps) {
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
       { maxZoom: 19, attribution: 'Esri World Imagery' },
     )
-    satellite.addTo(map)
-    L.control.layers({ 'Street Map': streets, Satellite: satellite }, undefined, {
+    // Place-name labels overlaid on satellite imagery
+    const labels = L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+      { maxZoom: 19, attribution: 'Esri Reference' },
+    )
+    const satWithLabels = L.layerGroup([satellite, labels])
+    satWithLabels.addTo(map)
+    L.control.layers({ 'Street Map': streets, 'Satellite + Names': satWithLabels }, undefined, {
       position: 'bottomleft',
     }).addTo(map)
 
@@ -267,6 +273,12 @@ export default function MapView(props: MapViewProps) {
           fillOpacity: 1,
         })
           .bindPopup(popupHtml(i + 1, site))
+          .bindTooltip(`Pond Site ${i + 1}`, {
+            permanent: true,
+            direction: 'right',
+            offset: [10, 0],
+            className: 'site-label',
+          })
           .addTo(layer)
         marker.on('click', () => onSelectSiteRef.current(i))
       })
@@ -297,6 +309,12 @@ export default function MapView(props: MapViewProps) {
         radius: 9, color: '#fff', weight: 2, fillColor: '#fbbf24', fillOpacity: 1,
       })
         .bindPopup(popupHtml('★', site, true))
+        .bindTooltip('★ Your Site', {
+          permanent: true,
+          direction: 'right',
+          offset: [10, 0],
+          className: 'site-label',
+        })
         .addTo(layer)
     }
   }, [analysis, customSite, selectedSite])
