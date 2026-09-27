@@ -4,6 +4,34 @@ import type { AnalysisResponse, PondSite, SiteAnalysisResponse } from './types'
 
 type Mode = 'draw' | 'kml'
 
+/**
+ * fetch with automatic retries for transient network failures.
+ * The campus NAT drops a large share of new TCP connections, so a single
+ * failed fetch must not surface as an error to the user.
+ */
+async function fetchRetry(
+  input: string,
+  init?: RequestInit,
+  attempts = 4,
+): Promise<Response> {
+  let lastErr: unknown
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const resp = await fetch(input, init)
+      // Retry only on server-side transient statuses
+      if (resp.status >= 500 && i < attempts - 1) {
+        lastErr = new Error(`HTTP ${resp.status}`)
+      } else {
+        return resp
+      }
+    } catch (e) {
+      lastErr = e // NetworkError / timeout — retry
+    }
+    await new Promise((r) => setTimeout(r, 400 * (i + 1)))
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('Network request failed')
+}
+
 export default function App() {
   const [mode, setMode] = useState<Mode>('draw')
   const [drawTool, setDrawTool] = useState<DrawTool>(null)
@@ -34,7 +62,7 @@ export default function App() {
     setSelectedSite(null)
     setDrawTool(null) // exit drawing mode once an area has been analyzed
     try {
-      const resp = await fetch('/analyzeArea', {
+      const resp = await fetchRetry('/analyzeArea', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ polygon: selection, target_cell_m: 10, max_sites: 5 }),
@@ -58,7 +86,7 @@ export default function App() {
     try {
       const fd = new FormData()
       fd.append('file', file)
-      const resp = await fetch('/analyzeContour', { method: 'POST', body: fd })
+      const resp = await fetchRetry('/analyzeContour', { method: 'POST', body: fd })
       const data = await resp.json()
       if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`)
       setAnalysis(data)
@@ -75,7 +103,7 @@ export default function App() {
     setBusy(true)
     setError(null)
     try {
-      const resp = await fetch('/analyzeSite', {
+      const resp = await fetchRetry('/analyzeSite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
