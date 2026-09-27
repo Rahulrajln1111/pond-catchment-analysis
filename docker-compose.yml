@@ -1,0 +1,22 @@
+version: "3.9"
+
+services:
+  pond-api:
+    build: .
+    container_name: pond-catchment
+    ports:
+      - "4289:4289"
+    environment:
+      - TERRAIN_CACHE_DIR=/tmp/terrain_cache
+      - FRONTEND_DIST=/srv/frontend/dist
+    volumes:
+      - terrain_cache:/tmp/terrain_cache   # persist downloaded DEM tiles
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4289/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  terrain_cache:

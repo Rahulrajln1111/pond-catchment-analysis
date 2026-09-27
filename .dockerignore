@@ -1,0 +1,9 @@
+venv/
+frontend/node_modules/
+__pycache__/
+*.pyc
+.git/
+*.kml
+*.kmz
+*.geojson
+*.pdf
