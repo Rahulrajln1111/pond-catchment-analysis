@@ -129,6 +129,14 @@ class AnalysisResponse(BaseModel):
             "GET /export/kml). Null for KML-upload analyses."
         ),
     )
+    river_mask_boundary: list[list[Coordinate]] = Field(
+        default_factory=list,
+        description=(
+            "Boundary rings of the detected river exclusion zone, as closed "
+            "lat/lon polygons. Empty when no river was detected or the "
+            "source provides no geometry. Drawn on the map as a visual layer."
+        ),
+    )
 
 
 # --- Request models for drawn-area analysis ---

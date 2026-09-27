@@ -240,6 +240,19 @@ export default function MapView(props: MapViewProps) {
         L.polyline(pts, { color: '#94a3b8', weight: 1.5, dashArray: '4 4' }).addTo(layer)
       }
 
+      // River exclusion zones (detected from OSM / DEM flow analysis)
+      ;(analysis.river_mask_boundary ?? []).forEach((ring) => {
+        if (ring.length > 2) {
+          L.polygon(ringsToLatLng(ring), {
+            color: '#2563eb',
+            weight: 1,
+            fillColor: '#3b82f6',
+            fillOpacity: 0.35,
+            interactive: false,
+          }).addTo(layer)
+        }
+      })
+
       analysis.candidate_sites.forEach((site, i) => {
         const color = SITE_COLORS[i % SITE_COLORS.length]
         const isSel = selectedSite === i

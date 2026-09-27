@@ -37,6 +37,7 @@ export interface AnalysisResponse {
   terrain: TerrainSummary
   candidate_sites: PondSite[]
   rivers_detected: boolean
+  river_mask_boundary?: Coordinate[][]
   data_source: string
   analysis_time_ms: number
 }

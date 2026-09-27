@@ -427,3 +427,9 @@ input[type='file'] {
 .site-label::before {
   display: none; /* hide default tooltip arrow */
 }
+
+/* Legend swatch for river exclusion layer */
+.swatch.river {
+  background: rgba(59, 130, 246, 0.35);
+  border: 1px solid #2563eb;
+}

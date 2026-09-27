@@ -33,6 +33,7 @@ from app.analysis.pond_finder import (
     find_candidate_sites,
     analyze_custom_site,
 )
+from app.analysis.catchment import mask_to_polygons
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -201,8 +202,13 @@ def _run_pipeline(
         f"({100.0 * rivers.sum() / rivers.size:.2f}% of grid)"
     )
 
+    # Boundary rings of the river zone, for drawing on the map. Guard
+    # against pathological ring counts on noisy masks.
+    river_rings = mask_to_polygons(rivers, transform)
+    river_rings = river_rings[:20]
+
     sites = find_candidate_sites(filled, fdir, acc, transform, river_mask)
-    return filled, fdir, acc, river_mask, rivers, sites
+    return filled, fdir, acc, river_mask, rivers, river_rings, sites
 
 
 def _sites_to_models(sites: list[dict]) -> list[PondSite]:
@@ -362,7 +368,7 @@ async def analyze_area(request: AreaAnalysisRequest):
     transform = dem_result["transform"]
 
     try:
-        filled, fdir, acc, river_mask, rivers, sites = _run_pipeline(
+        filled, fdir, acc, river_mask, rivers, river_rings, sites = _run_pipeline(
             dem, transform, request.max_sites, geom=geom
         )
     except HTTPException:
@@ -419,6 +425,11 @@ async def analyze_area(request: AreaAnalysisRequest):
         terrain=terrain,
         candidate_sites=_sites_to_models(sites),
         rivers_detected=bool(rivers.any()),
+        river_mask_boundary=[
+            [Coordinate(latitude=lat, longitude=lon) for lon, lat in ring]
+            for ring in river_rings
+            if len(ring) >= 3
+        ],
         data_source="aws-terrain-tiles",
         analysis_time_ms=elapsed_ms,
         context_id=context_id,

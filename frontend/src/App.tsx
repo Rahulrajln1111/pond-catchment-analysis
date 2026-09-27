@@ -310,6 +310,12 @@ export default function App() {
                 />
                 Catchment area
               </div>
+              {analysis.river_mask_boundary && analysis.river_mask_boundary.length > 0 && (
+                <div className="row">
+                  <span className="swatch river" />
+                  River (excluded zone)
+                </div>
+              )}
             </div>
           )}
           {contextId && !busy && (
